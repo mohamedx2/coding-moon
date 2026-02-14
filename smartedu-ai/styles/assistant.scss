@@ -1,0 +1,173 @@
+@import 'abstracts/variables';
+@import 'abstracts/mixins';
+
+.assistant-page {
+    @include animate-in('fade', 0.6s);
+
+    .page-header {
+        margin-bottom: $space-lg;
+
+        h1 {
+            @include text-gradient;
+            font-size: 2rem;
+            font-weight: 800;
+        }
+    }
+}
+
+.chat-wrapper {
+    @include glassmorphism;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 200px);
+    border-radius: $radius-xl;
+    overflow: hidden;
+    box-shadow: $shadow-lg;
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: $space-lg;
+        display: flex;
+        flex-direction: column;
+        gap: $space-md;
+        @include custom-scrollbar;
+
+        .chat-bubble {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: $radius-lg;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            @include animate-in('fade', 0.4s);
+
+            &.user {
+                background: linear-gradient(135deg, $primary, $primary-dark);
+                color: #fff;
+                align-self: flex-end;
+                border-bottom-right-radius: 4px;
+                box-shadow: 0 4px 12px rgba($primary, 0.2);
+            }
+
+            &.assistant {
+                @include glassmorphism;
+                background: rgba($bg-card, 0.4);
+                align-self: flex-start;
+                border-bottom-left-radius: 4px;
+                color: $text-primary;
+
+                .bot-ai-tag {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: $primary-light;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+
+                    .ai-dot {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                        background: $primary-light;
+                        box-shadow: 0 0 6px $primary-light;
+                    }
+                }
+            }
+        }
+    }
+
+    .chat-input-container {
+        padding: $space-md $space-lg;
+        background: rgba($bg-secondary, 0.5);
+        backdrop-filter: blur(8px);
+        border-top: 1px solid $border;
+        display: flex;
+        gap: $space-md;
+        align-items: center;
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+
+            .input-premium {
+                width: 100%;
+                padding: 14px 20px;
+                background: rgba($bg-input, 0.6);
+                border: 1px solid $border;
+                border-radius: $radius-full;
+                color: $text-primary;
+                font-size: 0.95rem;
+                transition: all $transition-fast;
+                outline: none;
+
+                &:focus {
+                    border-color: $primary-light;
+                    background: $bg-input;
+                    box-shadow: 0 0 0 4px $primary-glow;
+                }
+            }
+        }
+
+        .btn-send {
+            @include flex-center;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, $primary, $primary-dark);
+            color: #fff;
+            border: none;
+            transition: all $transition-base;
+            box-shadow: 0 4px 12px $primary-glow;
+
+            &:hover:not(:disabled) {
+                transform: scale(1.05) rotate(5deg);
+                box-shadow: 0 6px 20px $primary-glow;
+            }
+
+            &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+                background: $text-muted;
+            }
+        }
+    }
+}
+
+/* Typing Indicator Animation */
+.typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 8px 0;
+
+    span {
+        width: 6px;
+        height: 6px;
+        background: $text-muted;
+        border-radius: 50%;
+        animation: typing 1.4s infinite ease-in-out both;
+
+        &:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        &:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+    }
+}
+
+@keyframes typing {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0);
+    }
+
+    40% {
+        transform: scale(1);
+    }
+}

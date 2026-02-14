@@ -1,0 +1,10 @@
+{
+    "name": "SmartEdu AI",
+    "short_name": "SmartEdu",
+    "description": "AI-Powered Adaptive Learning Platform",
+    "icons": [],
+    "start_url": "/",
+    "display": "standalone",
+    "theme_color": "#6366f1",
+    "background_color": "#0a0a1a"
+}

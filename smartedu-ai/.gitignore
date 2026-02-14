@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Next.js
+.next/
+out/
+
+# Production
+build/
+dist/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.staging
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Internal Results & Diags
+*_results.txt
+payload.json
+verify_relay.py
+verify_history.py
+
+# Docker
+*.tar
+.docker/
+docker-compose.override.yml
+
+# Backups
+backups/
+
+# SSL certificates
+devops/nginx/ssl/

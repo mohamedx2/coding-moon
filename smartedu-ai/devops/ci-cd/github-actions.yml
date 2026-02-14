@@ -1,0 +1,391 @@
+# GitHub Actions CI/CD Pipeline
+# SmartEdu AI - Production Deployment
+
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================
+  # JOB 1: SECURITY SCANNING
+  # ============================================
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v3
+        if: github.event_name == 'pull_request'
+
+  # ============================================
+  # JOB 2: LINT & TEST
+  # ============================================
+  test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [frontend, backend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (Frontend)
+        if: matrix.service == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python (Backend)
+        if: matrix.service == 'backend'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies (Frontend)
+        if: matrix.service == 'frontend'
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install dependencies (Backend)
+        if: matrix.service == 'backend'
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+
+      - name: Lint (Frontend)
+        if: matrix.service == 'frontend'
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Lint (Backend)
+        if: matrix.service == 'backend'
+        working-directory: ./backend
+        run: |
+          pip install flake8 black
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          black --check .
+
+      - name: Run tests (Frontend)
+        if: matrix.service == 'frontend'
+        working-directory: ./frontend
+        run: npm test
+
+      - name: Run tests (Backend)
+        if: matrix.service == 'backend'
+        working-directory: ./backend
+        run: pytest --cov=. --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage.xml
+          flags: ${{ matrix.service }}
+
+  # ============================================
+  # JOB 3: BUILD & PUSH DOCKER IMAGES
+  # ============================================
+  build:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [security-scan, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        service: [frontend, backend, ai-worker]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          file: ./devops/docker/Dockerfile.${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Scan Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+
+  # ============================================
+  # JOB 4: DEPLOY TO STAGING
+  # ============================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: staging
+      url: https://staging.smartedu.ai
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to ECS (Staging)
+        run: |
+          # Update ECS task definition with new image
+          aws ecs update-service \
+            --cluster smartedu-staging \
+            --service frontend \
+            --force-new-deployment
+
+          aws ecs update-service \
+            --cluster smartedu-staging \
+            --service backend \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster smartedu-staging \
+            --services frontend backend
+
+      - name: Run smoke tests
+        run: |
+          curl -f https://staging.smartedu.ai/health || exit 1
+          curl -f https://staging.smartedu.ai/api/health || exit 1
+
+      - name: Notify Slack (Staging Deployed)
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ Staging deployment successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Deployment Complete*\nCommit: ${{ github.sha }}\nAuthor: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+
+  # ============================================
+  # JOB 5: DEPLOY TO PRODUCTION (BLUE-GREEN)
+  # ============================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment:
+      name: production
+      url: https://smartedu.ai
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Blue-Green Deployment
+        run: |
+          # Deploy to "green" environment
+          aws ecs update-service \
+            --cluster smartedu-production \
+            --service frontend-green \
+            --force-new-deployment
+
+          aws ecs update-service \
+            --cluster smartedu-production \
+            --service backend-green \
+            --force-new-deployment
+
+          # Wait for green to be healthy
+          aws ecs wait services-stable \
+            --cluster smartedu-production \
+            --services frontend-green backend-green
+
+      - name: Health check (Green)
+        run: |
+          # Test green environment
+          curl -f https://green.smartedu.ai/health || exit 1
+          curl -f https://green.smartedu.ai/api/health || exit 1
+
+      - name: Switch traffic to Green
+        run: |
+          # Update load balancer to point to green
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.GREEN_TARGET_GROUP_ARN }}
+
+      - name: Monitor for 5 minutes
+        run: |
+          # Monitor error rates
+          sleep 300
+          # Check CloudWatch metrics
+          ERROR_RATE=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/ApplicationELB \
+            --metric-name HTTPCode_Target_5XX_Count \
+            --dimensions Name=LoadBalancer,Value=smartedu-production \
+            --start-time $(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 300 \
+            --statistics Sum \
+            --query 'Datapoints[0].Sum' \
+            --output text)
+          
+          if [ "$ERROR_RATE" -gt 10 ]; then
+            echo "High error rate detected, rolling back"
+            exit 1
+          fi
+
+      - name: Decommission Blue
+        if: success()
+        run: |
+          # Scale down blue environment
+          aws ecs update-service \
+            --cluster smartedu-production \
+            --service frontend-blue \
+            --desired-count 0
+
+          aws ecs update-service \
+            --cluster smartedu-production \
+            --service backend-blue \
+            --desired-count 0
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          # Switch back to blue
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.BLUE_TARGET_GROUP_ARN }}
+
+      - name: Notify Slack (Production Deployed)
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "🚀 Production deployment successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Complete*\nCommit: ${{ github.sha }}\nAuthor: ${{ github.actor }}\nEnvironment: https://smartedu.ai"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack (Rollback)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "⚠️ Production deployment failed - Rolled back",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Failed*\nCommit: ${{ github.sha }}\nAuthor: ${{ github.actor }}\nStatus: Rolled back to previous version"
+                  }
+                }
+              ]
+            }
+
+      - name: Create Sentry release
+        if: success()
+        run: |
+          curl -sL https://sentry.io/get-cli/ | bash
+          sentry-cli releases new ${{ github.sha }}
+          sentry-cli releases set-commits ${{ github.sha }} --auto
+          sentry-cli releases finalize ${{ github.sha }}
+          sentry-cli releases deploys ${{ github.sha }} new -e production
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: smartedu
+          SENTRY_PROJECT: smartedu-ai
