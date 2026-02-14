@@ -19,31 +19,24 @@
 
 ---
 
-## 🎯 Overview
-
 SmartEdu AI is a production-ready, multi-tenant AI-powered educational platform featuring:
 
-- **Next.js 14+** frontend with SSR/SSG
-- **FastAPI** backend with async support
-- **AI worker service** for quiz generation and RAG
-- **PostgreSQL 15** with read replicas
-- **Redis** for caching and job queues
-- **Vector database** (Pinecone/Weaviate) for RAG
-- **NGINX** reverse proxy with SSL
-- **Prometheus + Grafana** monitoring
-- **Blue-green deployment** with automated rollback
+- **Gemini 2.5 Flash**: Hyper-fast, context-aware AI tutor integrated via `google-genai` SDK.
+- **Persistent Chat History**: Full conversation memory stored in PostgreSQL with contextual RAG.
+- **Premium Sass UI**: High-fidelity glassmorphic design for the AI Assistant with modular CSS architecture.
+- **Next.js 14+** frontend with SSR/SSG and Lucide-React icons.
+- **FastAPI** backend with async multi-tenant isolation.
+- **AI Worker Service**: Decoupled worker for intensive Gemini operations and quiz generation.
+- **Full Dockerization**: One-command deployment for the entire stack.
 
 ### Key Features
 
-✅ **Multi-tenant architecture** with tenant isolation  
-✅ **Role-based access control** (Student, Teacher, Admin)  
-✅ **JWT authentication** with refresh token rotation  
-✅ **AI-powered** quiz generation and tutoring  
-✅ **Real-time analytics** and performance tracking  
-✅ **Enterprise security** (OWASP Top 10 compliant)  
-✅ **Auto-scaling** and load balancing  
-✅ **Automated backups** with point-in-time recovery  
-✅ **99.9% uptime SLA** with multi-AZ deployment  
+✅ **AI Learning Assistant** with long-term memory and course-specific context.  
+✅ **Multi-tenant architecture** with strict tenant isolation and RBAC.  
+✅ **"Sass Perfect" UI** featuring glassmorphism, animations, and premium dark-mode.  
+✅ **JWT Authentication** with dual-URL configuration for flexible hosting.  
+✅ **Robust Error Handling** and automated usage logging for AI audit trails.  
+✅ **Scalable Infrastructure** with PostgreSQL, Redis, and NGINX Proxy.  
 
 ---
 
@@ -177,6 +170,18 @@ docker-compose exec nginx nginx -s reload
 curl https://smartedu.ai/health
 curl https://smartedu.ai/api/health
 ```
+
+---
+
+## 🧠 How the AI Assistant Works
+
+The SmartEdu AI Assistant leverages a stateful, RAG-enhanced pipeline to provide expert educational support:
+
+1. **Persistent History Fetching**: On every message, the backend retrieves the last 10 turns of conversation from the `chat_messages` table.
+2. **Contextual Enrichment**: If a `course_id` is passed, the system fetches course descriptions and document names to ground the AI's knowledge.
+3. **Worker Relay**: The backend relays the message, history, and context to the `ai-worker` service.
+4. **Gemini 2.5 Flash Processing**: The worker interacts with Google's Gemini API using the latest `google-genai` SDK for low-latency, high-reasoning responses.
+5. **Token Auditing**: Usage is logged to the database for transparent quota management and analytics.
 
 ---
 
@@ -344,14 +349,13 @@ Proprietary - SmartEdu AI © 2024
 ## 🎉 Acknowledgments
 
 Built with:
-- Next.js
-- FastAPI
-- PostgreSQL
-- Redis
-- NGINX
-- Prometheus
-- Grafana
-- Docker
+- **Google Gemini 2.5 Flash** (Intelligence Core)
+- **FastAPI** (Pythonic Backend)
+- **Next.js & Sass** (Premium Frontend)
+- **PostgreSQL** (Persistent Memory)
+- **Redis** (Real-time Cache)
+- **NGINX** (Reverse Proxy)
+- **Docker & Compose** (Orchestration)
 
 ---
 
