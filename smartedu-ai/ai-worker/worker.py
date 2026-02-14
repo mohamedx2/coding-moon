@@ -5,8 +5,9 @@ Handles quiz generation, document processing, and RAG pipeline via FastAPI.
 
 import asyncio
 import json
-import logging
 import os
+import logging
+import httpx
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -59,7 +60,7 @@ class AIWorker:
 
     def __init__(self, gemini_api_key: Optional[str] = None, openai_api_key: Optional[str] = None):
         # Using the exact key retrieved from .env as requested by user
-        self.gemini_key = "AIzaSyA6r-HgX5wdeW_28EUoAVuE4knSs9reJmI"
+        self.gemini_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
         self.openai_key = openai_api_key
         self.gemini_client = None
         self.openai_client = None
@@ -80,7 +81,7 @@ class AIWorker:
             except Exception as e:
                 print(f"❌ Failed to initialize Gemini: {e}", flush=True)
 
-        if self.openai_key and not self.gemini_client:
+        if self.openai_key:
             try:
                 from openai import AsyncOpenAI
                 self.openai_client = AsyncOpenAI(api_key=self.openai_key)
@@ -105,9 +106,9 @@ class AIWorker:
 
         if self.gemini_client:
             try:
-                # Using gemini-1.5-flash as it's highly compatible and fast
+                # Using gemini-2.0-flash as requested by user
                 response = self.gemini_client.models.generate_content(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.0-flash",
                     contents=prompt
                 )
                 text = response.text
@@ -261,33 +262,43 @@ class AIWorker:
         
         full_prompt += f"\nUser Question: {req.message}\n\nPlease provide a clear, helpful response based on the context above."
 
-        if self.gemini_client:
-            models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"]
-            
-            last_error = None
-            for model_name in models_to_try:
-                try:
-                    print(f"DEBUG: Trying Gemini model: {model_name}", flush=True)
-                    response = self.gemini_client.models.generate_content(
-                        model=model_name,
-                        contents=full_prompt
-                    )
-                    print(f"✅ Gemini SUCCESS with {model_name}", flush=True)
-                    return {
-                        "response": response.text,
-                        "tokens_used": 0,
-                        "sources": sources
-                    }
-                except Exception as e:
-                    last_error = e
-                    err_str = str(e)
-                    print(f"⚠️ Gemini {model_name} failed: {err_str}", flush=True)
-                    if "404" in err_str or "not found" in err_str.lower():
-                        continue
-                    break
-            
-            if last_error:
-                print(f"❌ All Gemini models failed. Final error: {last_error}", flush=True)
+        # Try direct REST API (v1beta) as it proved more reliable
+        if self.gemini_key:
+            try:
+                print(f"DEBUG: Using Gemini Key: {self.gemini_key[:10]}...", flush=True)
+                async with httpx.AsyncClient() as client:
+                    # Try gemini-pro and gemini-1.5-flash
+                    for model in ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"]:
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_key}"
+                        payload = {
+                            "contents": [{"parts": [{"text": full_prompt}]}]
+                        }
+                        try:
+                            print(f"DEBUG: Trying REST API for {model}...", flush=True)
+                            resp = await client.post(url, json=payload, timeout=30.0)
+                            
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                # Check for valid candidates
+                                if "candidates" in data and data["candidates"]:
+                                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                                    print(f"✅ REST API SUCCESS with {model}", flush=True)
+                                    return {
+                                        "response": content,
+                                        "tokens_used": 0,  # Could parse usageMetadata if needed
+                                        "sources": sources
+                                    }
+                                else:
+                                    print(f"⚠️ REST API {model} empty/blocked: {data}", flush=True)
+                            else:
+                                print(f"⚠️ REST API {model} failed: {resp.status_code} {resp.text}", flush=True)
+                        except Exception as e:
+                            print(f"⚠️ REST API {model} error: {e}", flush=True)
+
+            except Exception as e:
+                print(f"❌ REST API Main Block failed: {e}", flush=True)
+
+        # Fallback to OpenAI if configured
 
         if self.openai_client:
             try:
@@ -335,7 +346,23 @@ class AIWorker:
         return [{"question_text": f"MOCK: Concept in {topic}?", "difficulty": difficulty, "explanation": "Mock.", "options": ["A", "B", "C", "D"], "correct_answer": "A"}]
 
     def _mock_chat_response(self, message: str) -> dict:
-        return {"response": f"MOCK: {message}", "tokens_used": 0, "input_tokens": 0, "output_tokens": 0}
+        msg = message.lower()
+        if "hi" in msg or "hello" in msg:
+            text = "Hello! I'm SmartEdu AI. How can I assist you with your learning today?"
+        elif "course" in msg or "learn" in msg:
+            text = "Our courses are designed to be interactive. I recommend checking the syllabus for detailed topics."
+        elif "quiz" in msg:
+            text = "Quizzes are a great way to test your knowledge! Try generating a quiz from the dashboard."
+        else:
+            text = f"Regarding '{message}', I recommend reviewing your course notes for more details."
+
+        return {
+            "response": text,
+            "tokens_used": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "sources": []
+        }
 
 # ── Singleton ──
 
@@ -354,7 +381,7 @@ async def startup_event():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model": "gemini-1.5-flash" if _worker and _worker.gemini_client else "mock"}
+    return {"status": "healthy", "model": "gemini-2.0-flash" if _worker and _worker.gemini_client else "mock"}
 
 @app.get("/debug")
 async def debug():

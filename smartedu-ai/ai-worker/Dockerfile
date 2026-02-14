@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 RUN groupadd -r worker && useradd -r -g worker worker
+RUN chown -R worker:worker /app
 USER worker
 
 CMD ["python", "-m", "worker"]

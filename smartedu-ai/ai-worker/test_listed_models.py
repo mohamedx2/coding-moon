@@ -3,7 +3,7 @@ from google import genai
 import sys
 
 def test_listed():
-    key = os.getenv('GEMINI_API_KEY')
+    key = "AIzaSyA6r-HgX5wdeW_28EUoAVuE4knSs9reJmI"
     if not key:
         print("ERROR: No key")
         return

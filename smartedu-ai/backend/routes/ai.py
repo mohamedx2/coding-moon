@@ -163,4 +163,3 @@ async def get_history(
     result = await db.execute(stmt)
     messages = result.scalars().all()
     return ChatHistoryResponse(messages=messages)
-
