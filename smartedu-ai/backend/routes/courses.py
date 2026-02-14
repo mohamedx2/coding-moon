@@ -2,7 +2,8 @@
 SmartEdu AI – Course API Routes
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from uuid import UUID
@@ -11,6 +12,7 @@ from database import get_db
 from models import Course, Enrollment, User
 from schemas import CourseCreate, CourseResponse, CourseListResponse
 from auth import get_current_user, require_role
+from config import settings
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
 
@@ -112,7 +114,40 @@ async def enroll_student(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Already enrolled")
 
-    enrollment = Enrollment(student_id=current_user["user_id"], course_id=course_id)
     db.add(enrollment)
 
     return {"message": "Enrolled successfully"}
+
+
+@router.post("/{course_id}/initialize", response_model=CourseResponse)
+async def initialize_course_ai(
+    course_id: UUID,
+    current_user: dict = Depends(require_role("teacher", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate course description and metadata using AI."""
+    stmt = select(Course).where(Course.id == course_id, Course.tenant_id == current_user["tenant_id"])
+    result = await db.execute(stmt)
+    course = result.scalar_one_or_none()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                f"{settings.AI_WORKER_URL}/initialize-course",
+                json={"title": course.title, "code": course.code},
+                timeout=30.0
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                course.description = data.get("description", course.description)
+                # We could save modules to a new table, but for now we'll put them in course settings
+                course.settings = {** (course.settings or {}), "ai_modules": data.get("modules", [])}
+                await db.commit()
+                return course
+            else:
+                raise HTTPException(status_code=resp.status_code, detail="AI Worker failed to initialize course")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"AI initialization failed: {str(e)}")

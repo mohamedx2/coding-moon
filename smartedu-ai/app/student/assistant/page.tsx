@@ -75,7 +75,7 @@ export default function AssistantPage() {
                 },
                 body: JSON.stringify({
                     message: input,
-                    course_id: null
+                    course_id: null // TODO: Support selecting a course
                 }),
             });
 
@@ -85,7 +85,14 @@ export default function AssistantPage() {
                 throw new Error(data.detail || 'Failed to get response from AI');
             }
 
-            setMessages((prev: Message[]) => [...prev, { role: 'assistant', content: data.response }]);
+            setMessages((prev: Message[]) => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: data.response,
+                    sources: data.sources
+                }
+            ]);
         } catch (error: any) {
             console.error('Chat failed', error);
             toast.error(error.message || 'Connection error');
@@ -101,12 +108,12 @@ export default function AssistantPage() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1>AI Learning Assistant</h1>
-                        <p>Your persistent academic companion, powered by Gemini 2.5</p>
+                        <p>Your persistent academic companion, powered by Gemini 2.0</p>
                     </div>
                     <div className="flex items-center gap-sm">
                         <div className="badge badge-primary">
                             <Sparkles size={14} style={{ marginRight: '4px' }} />
-                            Persistent History
+                            RAG Enabled
                         </div>
                         <div className="glow-dot" title="AI Worker Online" />
                     </div>
@@ -115,7 +122,7 @@ export default function AssistantPage() {
 
             <div className="chat-wrapper">
                 <div className="chat-messages">
-                    {messages.map((msg, idx) => (
+                    {messages.map((msg: any, idx) => (
                         <div key={idx} className={`chat-bubble ${msg.role}`}>
                             {msg.role === 'assistant' && (
                                 <div className="bot-ai-tag">
@@ -131,6 +138,22 @@ export default function AssistantPage() {
                                 </div>
                             )}
                             <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+
+                            {msg.sources && msg.sources.length > 0 && (
+                                <div className="sources-container">
+                                    <div className="sources-label">
+                                        <Bot size={12} />
+                                        <span>Retrieved from course material</span>
+                                    </div>
+                                    <div className="sources-list">
+                                        {msg.sources.map((s: any, sIdx: number) => (
+                                            <div key={sIdx} className="source-tag">
+                                                Doc {s.doc_id.slice(0, 4)}... (Chunk {s.index})
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                     {loading && (

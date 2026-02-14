@@ -8,8 +8,9 @@ import json
 import logging
 import os
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+from document_processor import DocumentProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -29,10 +30,24 @@ class QuizGenerationRequest(BaseModel):
     question_type: str = "mcq"
     context: str = ""
 
+class CourseInitRequest(BaseModel):
+    title: str
+    code: Optional[str] = None
+
+class SuggestionRequest(BaseModel):
+    interests: List[str]
+    recent_courses: List[str]
+
 class ChatRequest(BaseModel):
     message: str
+    course_id: Optional[str] = None
     course_context: str = ""
     chat_history: Optional[List[Dict[str, str]]] = None
+
+class ProcessDocumentRequest(BaseModel):
+    doc_id: str
+    course_id: str
+    file_path: str
 
 class EmbeddingRequest(BaseModel):
     texts: List[str]
@@ -48,6 +63,7 @@ class AIWorker:
         self.openai_key = openai_api_key
         self.gemini_client = None
         self.openai_client = None
+        self.doc_processor = None
 
     async def initialize(self):
         """Initialize the AI clients."""
@@ -59,7 +75,8 @@ class AIWorker:
                 # genai.Client() automatically picks up GEMINI_API_KEY if not provided,
                 # but we'll be explicit using self.gemini_key.
                 self.gemini_client = genai.Client(api_key=self.gemini_key)
-                print("✅ Gemini client (google-genai) initialized successfully", flush=True)
+                self.doc_processor = DocumentProcessor(api_key=self.gemini_key)
+                print("✅ Gemini client and DocumentProcessor initialized successfully", flush=True)
             except Exception as e:
                 print(f"❌ Failed to initialize Gemini: {e}", flush=True)
 
@@ -128,6 +145,71 @@ class AIWorker:
 
         return self._mock_questions(req.topic, req.num_questions, req.difficulty, req.question_type)
 
+    async def initialize_course_content(self, req: CourseInitRequest) -> dict:
+        """Generate course description and modules using AI."""
+        prompt = (
+            "You are a premium curriculum designer for an elite university. "
+            f"For the course titled '{req.title}', generate a compelling and professional description (3-4 sentences) "
+            "and a list of 5 key learning modules with short summaries for each. "
+            "Return valid JSON with keys: 'description' (string) and 'modules' (list of strings). "
+            "Return ONLY the JSON object."
+        )
+
+        if self.gemini_client:
+            try:
+                response = self.gemini_client.models.generate_content(
+                    model="gemini-1.5-flash",
+                    contents=prompt
+                )
+                text = response.text
+                if "```json" in text:
+                    text = text.split("```json")[1].split("```")[0].strip()
+                elif "```" in text:
+                    text = text.split("```")[1].split("```")[0].strip()
+                return json.loads(text)
+            except Exception as e:
+                print(f"❌ Gemini Course Init failed: {e}", flush=True)
+
+        return {
+            "description": f"A comprehensive study of {req.title}.",
+            "modules": [f"Module {i}: Advanced {req.title} Concepts" for i in range(1, 6)]
+        }
+
+    async def get_personalized_suggestions(self, req: SuggestionRequest) -> dict:
+        """Generate personalized course suggestions."""
+        prompt = (
+            "You are an AI academic advisor. "
+            f"Given the student's interests: {', '.join(req.interests)} "
+            f"and their recent courses: {', '.join(req.recent_courses)}, "
+            "suggest 3 new course topics they might find fascinating. "
+            "Return valid JSON with key 'suggestions' as a list of objects. "
+            "Each object MUST have: 'title', 'description', and 'reason'. "
+            "Return ONLY the JSON object."
+        )
+
+        if self.gemini_client:
+            try:
+                response = self.gemini_client.models.generate_content(
+                    model="gemini-1.5-flash",
+                    contents=prompt
+                )
+                text = response.text
+                if "```json" in text:
+                    text = text.split("```json")[1].split("```")[0].strip()
+                elif "```" in text:
+                    text = text.split("```")[1].split("```")[0].strip()
+                return json.loads(text)
+            except Exception as e:
+                print(f"❌ Gemini Suggestions failed: {e}", flush=True)
+
+        return {
+            "suggestions": [
+                {"title": "Quantum Computing", "description": "Intro to quantum bits and gates.", "reason": "Since you like Physics."},
+                {"title": "Advanced AI Ethics", "description": "Ethics in the age of LLMs.", "reason": "Based on your interest in Philosophy."},
+                {"title": "Linear Algebra for ML", "description": "The math behind the models.", "reason": "Essential for your CS path."}
+            ]
+        }
+
     async def chat_with_context(self, req: ChatRequest) -> dict:
         """AI chat with RAG context from course materials."""
         system_instr = (
@@ -138,25 +220,49 @@ class AIWorker:
         )
 
         full_prompt = f"{system_instr}\n\n"
+        
+        # RAG Context Retrieval
+        sources = []
+        if req.course_id and self.doc_processor:
+            try:
+                # Retrieve top chunks with metadata
+                results = self.doc_processor.collection.query(
+                    query_embeddings=[self.client.models.embed_content(
+                        model="text-embedding-004",
+                        contents=[req.message],
+                        config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
+                    ).embeddings[0].values],
+                    where={"course_id": str(req.course_id)},
+                    n_results=4
+                )
+                
+                if results["documents"][0]:
+                    rag_context = "\n---\n".join(results["documents"][0])
+                    full_prompt += f"Retrieved Knowledge from Course Materials:\n{rag_context}\n\n"
+                    
+                    # Extract sources
+                    for meta in results["metadatas"][0]:
+                        sources.append({
+                            "doc_id": meta.get("doc_id"),
+                            "index": meta.get("chunk_index")
+                        })
+                    
+                    print(f"DEBUG: RAG context added ({len(results['documents'][0])} chunks) for course {req.course_id}", flush=True)
+            except Exception as e:
+                print(f"⚠️ RAG search failed: {e}", flush=True)
+
         if req.course_context:
-            full_prompt += f"Course Material Context:\n{req.course_context}\n\n"
+            full_prompt += f"General Course Context:\n{req.course_context}\n\n"
         
         if req.chat_history:
+            full_prompt += "Recent Chat History:\n"
             for m in req.chat_history[-5:]:
                 full_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
         
-        full_prompt += f"User: {req.message}"
+        full_prompt += f"\nUser Question: {req.message}\n\nPlease provide a clear, helpful response based on the context above."
 
         if self.gemini_client:
-            # Verified models from raw API listing (v1)
-            # Prioritizing the latest 2.5 and 2.0 variants
-            models_to_try = [
-                "gemini-2.5-flash",
-                "gemini-2.0-flash",
-                "gemini-2.0-flash-lite",
-                "gemini-1.5-flash",
-                "gemini-pro"
-            ]
+            models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"]
             
             last_error = None
             for model_name in models_to_try:
@@ -170,15 +276,13 @@ class AIWorker:
                     return {
                         "response": response.text,
                         "tokens_used": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
+                        "sources": sources
                     }
                 except Exception as e:
                     last_error = e
                     err_str = str(e)
                     print(f"⚠️ Gemini {model_name} failed: {err_str}", flush=True)
-                    # If it's a 404 or unsupported, we continue.
-                    if "404" in err_str or "not found" in err_str.lower() or "not supported" in err_str.lower():
+                    if "404" in err_str or "not found" in err_str.lower():
                         continue
                     break
             
@@ -266,9 +370,36 @@ async def generate_quiz(req: QuizGenerationRequest):
     questions = await _worker.generate_quiz_questions(req)
     return {"questions": questions}
 
+@app.post("/initialize-course")
+async def initialize_course(req: CourseInitRequest):
+    content = await _worker.initialize_course_content(req)
+    return content
+
+@app.post("/suggestions")
+async def suggestions(req: SuggestionRequest):
+    data = await _worker.get_personalized_suggestions(req)
+    return data
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
     return await _worker.chat_with_context(req)
+
+@app.post("/process-document")
+async def process_document(req: ProcessDocumentRequest):
+    if not _worker or not _worker.doc_processor:
+        raise HTTPException(status_code=500, detail="Document processor not initialized")
+    
+    try:
+        # We could run this in background if files are large
+        num_chunks = _worker.doc_processor.process_document(
+            doc_id=req.doc_id,
+            course_id=req.course_id,
+            file_path=req.file_path
+        )
+        return {"status": "success", "chunks": num_chunks}
+    except Exception as e:
+        logger.error(f"Failed to process document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

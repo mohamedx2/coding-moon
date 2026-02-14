@@ -91,6 +91,7 @@ async def chat(
     # Call AI Worker
     response_text = "AI thinking..."
     tokens_used = 0
+    sources = []
     
     try:
         async with httpx.AsyncClient() as client:
@@ -98,15 +99,17 @@ async def chat(
                 f"{settings.AI_WORKER_URL}/chat",
                 json={
                     "message": body.message,
+                    "course_id": str(body.course_id) if body.course_id else None,
                     "course_context": course_context,
                     "chat_history": formatted_history
                 },
-                timeout=45.0 # Increased timeout for Gemini
+                timeout=45.0
             )
             if resp.status_code == 200:
                 data = resp.json()
                 response_text = data.get("response", "No response from AI.")
                 tokens_used = data.get("tokens_used", 0)
+                sources = data.get("sources", [])
             else:
                 logger.error(f"AI Worker error: {resp.status_code} - {resp.text}")
                 response_text = "I'm sorry, I'm having trouble processing that right now. Please try again in a moment."
@@ -131,7 +134,7 @@ async def chat(
         tenant_id=current_user["tenant_id"],
         user_id=current_user["user_id"],
         request_type="chat",
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash", # Updated to reflect likely model used
         input_tokens=len(body.message.split()),
         output_tokens=len(response_text.split()),
         cost_usd=0.0,
@@ -142,7 +145,7 @@ async def chat(
     return ChatResponse(
         response=response_text,
         tokens_used=tokens_used or (len(body.message.split()) + len(response_text.split())),
-        sources=[],
+        sources=sources,
     )
 
 

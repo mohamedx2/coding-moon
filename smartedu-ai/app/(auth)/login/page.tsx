@@ -17,9 +17,12 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
 
+        // Explicitly hit port 8000 for local development as requested
+        const API_BASE = 'http://localhost:8000/api';
+
         try {
             console.log(email, password)
-            const res = await fetch('/api/auth/login', {
+            const res = await fetch(`${API_BASE}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
@@ -35,7 +38,15 @@ export default function LoginPage() {
             document.cookie = `access_token=${data.access_token}; path=/; max-age=${data.expires_in}; SameSite=Strict`;
 
             toast.success('Welcome back!');
-            router.push('/student/dashboard'); // Redirect to student dashboard
+
+            // Role-based redirection
+            if (data.role === 'admin' || data.role === 'super_admin') {
+                router.push('/admin/dashboard');
+            } else if (data.role === 'teacher') {
+                router.push('/teacher/dashboard');
+            } else {
+                router.push('/student/dashboard');
+            }
         } catch (error: any) {
             console.error('Login failed', error);
             toast.error(error.message);

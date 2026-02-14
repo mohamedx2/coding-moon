@@ -48,6 +48,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(
         access_token=access_token,
         expires_in=900,
+        role=user.role,
+        name=user.name
     )
 
 
@@ -68,6 +70,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(
         access_token=access_token,
         expires_in=900,
+        role=user.role,
+        name=user.name
     )
 
 

@@ -12,6 +12,7 @@ const navItems = {
         { href: '/student/dashboard', label: 'Dashboard', icon: '📊' },
         { href: '/student/quiz', label: 'Quizzes', icon: '📝' },
         { href: '/student/learning-path', label: 'Learning Path', icon: '🛤️' },
+        { href: '/student/live', label: 'Live Class', icon: '📹' },
         { href: '/student/analytics', label: 'Analytics', icon: '📈' },
         { href: '/student/assistant', label: 'AI Assistant', icon: '🤖' },
         { href: '/student/settings', label: 'Settings', icon: '⚙️' },
@@ -26,6 +27,7 @@ const navItems = {
     admin: [
         { href: '/admin/dashboard', label: 'Dashboard', icon: '📊' },
         { href: '/admin/users', label: 'Users', icon: '👥' },
+        { href: '/admin/courses', label: 'Courses', icon: '📚' },
         { href: '/admin/billing', label: 'Billing', icon: '💳' },
     ],
 };

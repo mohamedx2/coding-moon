@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
-    API_PREFIX: str = ""
+    API_PREFIX: str = "/api"
     AI_WORKER_URL: str = "http://ai-worker:8001"
 
     # Database

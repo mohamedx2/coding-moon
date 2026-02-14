@@ -19,6 +19,9 @@ from routes.courses import router as courses_router
 from routes.quizzes import router as quizzes_router
 from routes.ai import router as ai_router
 from routes.analytics import router as analytics_router
+from routes.documents import router as documents_router
+from routes.suggestions import router as suggestions_router
+from routes.admin import router as admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +101,9 @@ app.include_router(courses_router, prefix=settings.API_PREFIX)
 app.include_router(quizzes_router, prefix=settings.API_PREFIX)
 app.include_router(ai_router, prefix=settings.API_PREFIX)
 app.include_router(analytics_router, prefix=settings.API_PREFIX)
+app.include_router(documents_router, prefix=settings.API_PREFIX)
+app.include_router(suggestions_router, prefix=settings.API_PREFIX)
+app.include_router(admin_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])

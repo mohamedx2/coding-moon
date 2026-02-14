@@ -15,6 +15,7 @@ class RoleEnum(str, Enum):
     student = "student"
     teacher = "teacher"
     admin = "admin"
+    super_admin = "super_admin"
 
 
 class DifficultyEnum(str, Enum):
@@ -41,6 +42,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    role: str
+    name: str
 
 
 class RefreshTokenRequest(BaseModel):
@@ -92,6 +95,41 @@ class CourseResponse(BaseModel):
 class CourseListResponse(BaseModel):
     courses: List[CourseResponse]
     total: int
+
+
+# ── Tenant ──
+
+class TenantResponse(BaseModel):
+    id: UUID
+    name: str
+    domain: Optional[str]
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TopTenantInfo(BaseModel):
+    name: str
+    user_count: int
+    course_count: int
+    plan: str
+
+class SystemHealthInfo(BaseModel):
+    service: str
+    status: str
+    uptime: str
+    latency: str
+
+class AdminDashboardStats(BaseModel):
+    total_users: int
+    active_tenants: int
+    total_courses: int
+    ai_requests_today: int
+    revenue_estimate: str
+    top_tenants: List[TopTenantInfo]
+    system_health: List[SystemHealthInfo]
 
 
 # ── Quiz ──
@@ -199,6 +237,27 @@ class ChatMessageResponse(BaseModel):
 
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]
+
+
+class CourseDocumentResponse(BaseModel):
+    id: UUID
+    filename: str
+    file_type: str
+    file_size: int
+    is_processed: bool
+    uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CourseSuggestion(BaseModel):
+    title: str
+    description: str
+    reason: str
+
+class SuggestionResponse(BaseModel):
+    suggestions: List[CourseSuggestion]
 
 
 # ── Health ──

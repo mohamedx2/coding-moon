@@ -14,10 +14,30 @@ const roleRoutes: Record<string, string[]> = {
 export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
-    // Skip public routes and API
+    // Skip static assets
     if (
         pathname.startsWith('/_next') ||
-        pathname.startsWith('/api') ||
+        pathname === '/favicon.ico'
+    ) {
+        return NextResponse.next();
+    }
+
+    const token = request.cookies.get('access_token')?.value;
+
+    // For API routes: forward auth header if token exists
+    if (pathname.startsWith('/api')) {
+        if (token) {
+            const requestHeaders = new Headers(request.headers);
+            requestHeaders.set('Authorization', `Bearer ${token}`);
+            return NextResponse.next({
+                request: { headers: requestHeaders },
+            });
+        }
+        return NextResponse.next();
+    }
+
+    // Public frontend routes - no auth needed
+    if (
         pathname === '/' ||
         pathname === '/login' ||
         pathname === '/register' ||
@@ -27,40 +47,20 @@ export function middleware(request: NextRequest) {
         pathname.startsWith('/security') ||
         pathname.startsWith('/docs')
     ) {
-        return NextResponse.next();
-    }
-
-    // Check if route is protected
-    const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
-
-    if (isProtected) {
-        // In production, validate JWT from cookie
-        const token = request.cookies.get('access_token')?.value;
-
-        if (!token) {
-            // For development, allow access; in production, redirect to login
-            return NextResponse.redirect(new URL('/login', request.url));
-        }
-
-        // Inject Authorization header from cookie for backend
-        const requestHeaders = new Headers(request.headers);
-        requestHeaders.set('Authorization', `Bearer ${token}`);
-
-        const response = NextResponse.next({
-            request: {
-                headers: requestHeaders,
-            },
-        });
-
-        // Add security headers
+        const response = NextResponse.next();
         response.headers.set('X-Frame-Options', 'DENY');
         response.headers.set('X-Content-Type-Options', 'nosniff');
-        response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
         return response;
     }
 
-    // Add security headers for non-protected paths
+    // Protected frontend routes - require token
+    const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
+
+    if (isProtected && !token) {
+        return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // Add security headers
     const response = NextResponse.next();
     response.headers.set('X-Frame-Options', 'DENY');
     response.headers.set('X-Content-Type-Options', 'nosniff');

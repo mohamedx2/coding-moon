@@ -1,0 +1,6 @@
+{
+    "name": "Verify User",
+    "email": "verify@example.com",
+    "password": "securePassword123",
+    "role": "student"
+}

@@ -31,7 +31,7 @@ def create_access_token(user_id: UUID, role: str, tenant_id: UUID) -> str:
     """Create a short-lived JWT access token."""
     payload = {
         "sub": str(user_id),
-        "role": str(role),
+        "role": role.value if hasattr(role, 'value') else str(role),
         "tenant_id": str(tenant_id),
         "type": "access",
         "exp": datetime.utcnow() + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
@@ -76,10 +76,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     }
 
 
-def require_role(*allowed_roles: str):
+def require_role(*allowed_roles):
     """Dependency factory: restrict endpoint to specific roles."""
+    # Pre-compute allowed role strings at definition time
+    # UserRole enum: str(UserRole.admin) == "UserRole.admin" but UserRole.admin.value == "admin"
+    allowed = [r.value if hasattr(r, 'value') else str(r) for r in allowed_roles]
+
     async def role_checker(current_user: dict = Depends(get_current_user)):
-        if current_user["role"] not in allowed_roles:
+        user_role = current_user["role"]  # Already a plain string from JWT decode
+        if user_role not in allowed:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return current_user
     return role_checker
