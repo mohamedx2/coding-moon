@@ -21,22 +21,36 @@
 
 SmartEdu AI is a production-ready, multi-tenant AI-powered educational platform featuring:
 
-- **Gemini 2.5 Flash**: Hyper-fast, context-aware AI tutor integrated via `google-genai` SDK.
-- **Persistent Chat History**: Full conversation memory stored in PostgreSQL with contextual RAG.
-- **Premium Sass UI**: High-fidelity glassmorphic design for the AI Assistant with modular CSS architecture.
-- **Next.js 14+** frontend with SSR/SSG and Lucide-React icons.
-- **FastAPI** backend with async multi-tenant isolation.
-- **AI Worker Service**: Decoupled worker for intensive Gemini operations and quiz generation.
+- **Gemini 2.0 Flash**: State-of-the-art AI integration using `gemini-2.0-flash` for ultra-low latency and high reasoning.
+- **Advanced RAG Pipeline**: Context-aware learning assistant and quiz generator using ChromaDB vector storage.
+- **Persistent Chat History**: Full conversation memory with role-based context and document retrieval.
+- **Premium Glassmorphic UI**: High-fidelity Sass-based design with fluid animations and responsive layout.
+- **FastAPI backend**: High-performance asynchronous API with strict multi-tenant isolation.
+- **AI Worker Service**: Dedicated service for intensive document processing and AI generation tasks.
 - **Full Dockerization**: One-command deployment for the entire stack.
 
 ### Key Features
 
-✅ **AI Learning Assistant** with long-term memory and course-specific context.  
-✅ **Multi-tenant architecture** with strict tenant isolation and RBAC.  
-✅ **"Sass Perfect" UI** featuring glassmorphism, animations, and premium dark-mode.  
-✅ **JWT Authentication** with dual-URL configuration for flexible hosting.  
-✅ **Robust Error Handling** and automated usage logging for AI audit trails.  
-✅ **Scalable Infrastructure** with PostgreSQL, Redis, and NGINX Proxy.  
+✅ **AI Learning Assistant** with multi-turn memory and course-document grounding.
+✅ **RAG-Enhanced Quizzes**: Automated quiz generation targeted at specific source materials (PDFs).
+✅ **Enterprise Admin Dashboard**: Platform-wide monitoring of stats, users, and multi-tenant courses.
+✅ **Flexible Role Hierarchy**: Robust access control for Students, Teachers, Admins, and Super Admins.
+✅ **Sass-Powered UI**: Modern glassmorphic aesthetics with optimized CSS modules.
+✅ **Docker Orchestration**: Production-ready deployment using PostgreSQL, Redis, and ChromaDB.
+
+---
+
+## 🖼️ Image & Captures Summary
+
+Current image assets in this project:
+
+- **Total images found**: 2
+- **Capture/screenshot images found**: 0
+- **Image files**:
+    - `public/favicon.svg`
+    - `public/favicon.ico`
+
+> Note: No dedicated `captures/` or `screenshots/` folder exists yet.
 
 ---
 
@@ -177,11 +191,11 @@ curl https://smartedu.ai/api/health
 
 The SmartEdu AI Assistant leverages a stateful, RAG-enhanced pipeline to provide expert educational support:
 
-1. **Persistent History Fetching**: On every message, the backend retrieves the last 10 turns of conversation from the `chat_messages` table.
-2. **Contextual Enrichment**: If a `course_id` is passed, the system fetches course descriptions and document names to ground the AI's knowledge.
-3. **Worker Relay**: The backend relays the message, history, and context to the `ai-worker` service.
-4. **Gemini 2.5 Flash Processing**: The worker interacts with Google's Gemini API using the latest `google-genai` SDK for low-latency, high-reasoning responses.
-5. **Token Auditing**: Usage is logged to the database for transparent quota management and analytics.
+1. **Document Ingestion**: PDFs are processed by the `ai-worker`, chunked, and embedded using `text-embedding-004`.
+2. **Vector Storage**: Chunks are stored in ChromaDB, tagged with `course_id` and `document_id` for precise retrieval.
+3. **Contextual Retrieval**: On query, the system performs a multi-factor search to find the most relevant material.
+4. **Gemini 2.0 Reasoning**: The retrieved context is passed to `gemini-2.0-flash` to generate grounded, accurate responses or quiz questions.
+5. **Transparency**: Sources used for the AI response are provided back to the user for verification.
 
 ---
 

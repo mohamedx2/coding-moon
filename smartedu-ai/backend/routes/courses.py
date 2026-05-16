@@ -59,7 +59,7 @@ async def create_course(
     """Create a new course (teacher or admin only)."""
     course = Course(
         tenant_id=current_user["tenant_id"],
-        teacher_id=current_user["user_id"],
+        teacher_id=body.teacher_id or current_user["user_id"],
         title=body.title,
         code=body.code,
         description=body.description,
@@ -114,6 +114,10 @@ async def enroll_student(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Already enrolled")
 
+    enrollment = Enrollment(
+        student_id=current_user["user_id"],
+        course_id=course_id,
+    )
     db.add(enrollment)
 
     return {"message": "Enrolled successfully"}

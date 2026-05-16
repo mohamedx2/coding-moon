@@ -164,7 +164,7 @@ class Quiz(Base):
     course_id = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(SQLEnum(QuizStatus, name="quizstatus", native_enum=True), default=QuizStatus.draft)
+    status = Column(SQLEnum(QuizStatus, name="quiz_status", native_enum=True), default=QuizStatus.draft)
     difficulty = Column(SQLEnum(DifficultyLevel, name="difficultylevel", native_enum=True), default=DifficultyLevel.medium)
     time_limit_minutes = Column(Integer, nullable=True)
     is_ai_generated = Column(Boolean, default=False)

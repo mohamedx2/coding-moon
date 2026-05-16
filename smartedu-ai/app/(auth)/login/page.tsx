@@ -31,7 +31,19 @@ export default function LoginPage() {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.detail || 'Login failed');
+                let errorMessage = data.detail || 'Login failed';
+                
+                // Provide more helpful error messages
+                if (res.status === 401) {
+                    if (errorMessage.includes('Invalid credentials')) {
+                        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+                        if (process.env.NODE_ENV === 'development') {
+                            errorMessage += ' Hint: Use admin@smartedu.ai / admin123 for development.';
+                        }
+                    }
+                }
+                
+                throw new Error(errorMessage);
             }
 
             // Set cookie
@@ -127,6 +139,16 @@ export default function LoginPage() {
                 Don&apos;t have an account?{' '}
                 <Link href="/register" style={{ color: 'var(--primary-light)', fontWeight: 600 }}>Sign up</Link>
             </p>
+
+            {/* Development credentials hint */}
+            <div className="text-center" style={{ marginTop: '16px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.8rem' }}>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    <strong>Development Access:</strong>
+                </p>
+                <p style={{ color: 'var(--text-secondary)', margin: '4px 0' }}>
+                    Admin: <code style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>admin@smartedu.ai</code> / <code style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>admin123</code>
+                </p>
+            </div>
         </div>
     );
 }

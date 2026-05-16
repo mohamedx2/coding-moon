@@ -2,8 +2,6 @@
 # SmartEdu AI – Docker Compose
 # ──────────────────────────────────
 
-version: "3.9"
-
 services:
   # ── Frontend ──
   frontend:

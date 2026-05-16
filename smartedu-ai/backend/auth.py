@@ -79,12 +79,20 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 def require_role(*allowed_roles):
     """Dependency factory: restrict endpoint to specific roles."""
     # Pre-compute allowed role strings at definition time
-    # UserRole enum: str(UserRole.admin) == "UserRole.admin" but UserRole.admin.value == "admin"
-    allowed = [r.value if hasattr(r, 'value') else str(r) for r in allowed_roles]
+    allowed = set()
+    for r in allowed_roles:
+        val = r.value if hasattr(r, 'value') else str(r)
+        allowed.add(val)
 
     async def role_checker(current_user: dict = Depends(get_current_user)):
-        user_role = current_user["role"]  # Already a plain string from JWT decode
+        user_role = current_user["role"]
+        
+        # Super admin always has admin privileges
+        if user_role == "super_admin" and "admin" in allowed:
+            return current_user
+            
         if user_role not in allowed:
+            print(f"DEBUG AUTH: User role '{user_role}' not in allowed {allowed}", flush=True)
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return current_user
     return role_checker

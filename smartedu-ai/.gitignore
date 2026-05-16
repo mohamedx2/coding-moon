@@ -2,6 +2,8 @@
 node_modules/
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
 .venv/
 venv/
 
@@ -12,6 +14,7 @@ out/
 # Production
 build/
 dist/
+*.tsbuildinfo
 
 # Environment
 .env
@@ -30,6 +33,9 @@ dist/
 Thumbs.db
 
 # Internal Results & Diags
+*.log
+*_log.txt
+*logs*.txt
 *_results.txt
 payload.json
 verify_relay.py
@@ -42,6 +48,9 @@ docker-compose.override.yml
 
 # Backups
 backups/
+
+# Runtime uploads
+backend/uploads/documents/
 
 # SSL certificates
 devops/nginx/ssl/

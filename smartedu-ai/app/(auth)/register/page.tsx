@@ -29,7 +29,16 @@ export default function RegisterPage() {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.detail || 'Registration failed');
+                let errorMessage = data.detail || 'Registration failed';
+                
+                // Provide more helpful error messages
+                if (res.status === 409) {
+                    if (errorMessage.includes('User already exists')) {
+                        errorMessage = 'An account with this email already exists. Please try logging in instead.';
+                    }
+                }
+                
+                throw new Error(errorMessage);
             }
 
             // Set cookie and login

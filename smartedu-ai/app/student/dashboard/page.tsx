@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import apiClient from '@/lib/api';
 
 interface Analytics {
     total_quizzes: number;
@@ -20,14 +21,15 @@ export default function StudentDashboard() {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const res = await fetch('/api/analytics/student');
-                if (res.status === 401) {
-                    router.push('/login');
-                    return;
-                }
-                if (res.ok) {
-                    const data = await res.json();
-                    setStats(data);
+                const response = await apiClient.getStudentAnalytics();
+                if (response.error) {
+                    if (response.error.includes('401') || response.error.includes('Unauthorized')) {
+                        router.push('/login');
+                        return;
+                    }
+                    console.error('Failed to fetch stats:', response.error);
+                } else if (response.data) {
+                    setStats(response.data);
                 }
             } catch (error) {
                 console.error('Failed to fetch stats', error);

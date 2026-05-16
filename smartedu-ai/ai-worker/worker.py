@@ -3,7 +3,6 @@ SmartEdu AI – AI Worker Service
 Handles quiz generation, document processing, and RAG pipeline via FastAPI.
 """
 
-import asyncio
 import json
 import os
 import logging
@@ -11,6 +10,8 @@ import httpx
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+from google import genai
+from google.genai import types
 from document_processor import DocumentProcessor
 
 # Configure logging
@@ -30,6 +31,8 @@ class QuizGenerationRequest(BaseModel):
     difficulty: str = "medium"
     question_type: str = "mcq"
     context: str = ""
+    course_id: Optional[str] = None
+    document_id: Optional[str] = None
 
 class CourseInitRequest(BaseModel):
     title: str
@@ -69,10 +72,8 @@ class AIWorker:
     async def initialize(self):
         """Initialize the AI clients."""
         import sys
-        print(f"DEBUG: Initializing AI Worker with verified gemini_key (len: {len(self.gemini_key)})...", flush=True)
         if self.gemini_key:
             try:
-                from google import genai
                 # genai.Client() automatically picks up GEMINI_API_KEY if not provided,
                 # but we'll be explicit using self.gemini_key.
                 self.gemini_client = genai.Client(api_key=self.gemini_key)
@@ -94,25 +95,65 @@ class AIWorker:
 
     async def generate_quiz_questions(self, req: QuizGenerationRequest) -> list[dict]:
         """Generate quiz questions using AI."""
+        # Multi-factor Context Retrieval (RAG)
+        rag_context = ""
+        if req.course_id and self.doc_processor:
+            try:
+                # If specific document is provided, we could refine the search, 
+                # but searching the whole course with the topic as query is usually better.
+                # However, if document_id is provided, we filter for that document.
+                
+                query_text = req.topic
+                if req.document_id:
+                    # Specific document search
+                    print(f"DEBUG: Searching RAG context for document {req.document_id}", flush=True)
+                    results = self.doc_processor.collection.query(
+                        query_embeddings=[self.gemini_client.models.embed_content(
+                            model="text-embedding-004",
+                            contents=[query_text],
+                            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
+                        ).embeddings[0].values],
+                        where={"doc_id": str(req.document_id)},
+                        n_results=5
+                    )
+                else:
+                    # Course-wide search
+                    print(f"DEBUG: Searching RAG context for course {req.course_id}", flush=True)
+                    results = self.doc_processor.collection.query(
+                        query_embeddings=[self.gemini_client.models.embed_content(
+                            model="text-embedding-004",
+                            contents=[query_text],
+                            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
+                        ).embeddings[0].values],
+                        where={"course_id": str(req.course_id)},
+                        n_results=5
+                    )
+                
+                if results["documents"] and results["documents"][0]:
+                    rag_context = "\n---\n".join(results["documents"][0])
+                    print(f"DEBUG: Quiz RAG context added ({len(results['documents'][0])} chunks)", flush=True)
+            except Exception as e:
+                print(f"⚠️ Quiz RAG search failed: {e}", flush=True)
+
         prompt = (
             "You are an expert educator creating quiz questions. "
             f"Generate exactly {req.num_questions} {req.difficulty} difficulty {req.question_type} questions about: {req.topic}. "
             "Return valid JSON array of objects. Each object MUST have: "
             "'question_text' (string), 'options' (array of 4 strings for MCQ), "
             "'correct_answer' (string, must be one of the options), 'explanation' (string), 'difficulty' (string). "
-            f"Context: {req.context}\n\n"
+            f"Context: {req.context}\n"
+            f"Source Material for Questions:\n{rag_context}\n\n"
             "Return ONLY the JSON array."
         )
 
         if self.gemini_client:
             try:
-                # Using gemini-2.0-flash as requested by user
+                # Standardizing on gemini-2.0-flash as requested
                 response = self.gemini_client.models.generate_content(
                     model="gemini-2.0-flash",
                     contents=prompt
                 )
                 text = response.text
-                print(f"DEBUG: Gemini Response text length: {len(text)}", flush=True)
                 
                 if "```json" in text:
                     text = text.split("```json")[1].split("```")[0].strip()
@@ -122,9 +163,7 @@ class AIWorker:
                 data = json.loads(text)
                 return data if isinstance(data, list) else data.get("questions", [])
             except Exception as e:
-                import traceback
                 print(f"❌ Gemini Quiz generation failed: {e}", flush=True)
-                print(traceback.format_exc(), flush=True)
 
         if self.openai_client:
             # ... (OpenAI logic stays same)
@@ -228,7 +267,7 @@ class AIWorker:
             try:
                 # Retrieve top chunks with metadata
                 results = self.doc_processor.collection.query(
-                    query_embeddings=[self.client.models.embed_content(
+                    query_embeddings=[self.gemini_client.models.embed_content(
                         model="text-embedding-004",
                         contents=[req.message],
                         config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")

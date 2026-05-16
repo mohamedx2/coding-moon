@@ -29,11 +29,66 @@ async def list_quizzes(
     if course_id:
         stmt = stmt.where(Quiz.course_id == course_id)
     if current_user["role"] == "student":
-        stmt = stmt.where(Quiz.status == QuizStatus.PUBLISHED)
+        stmt = stmt.where(Quiz.status == QuizStatus.published)
 
     result = await db.execute(stmt)
     quizzes = result.scalars().all()
-    return [QuizResponse.model_validate(q) for q in quizzes]
+    
+    # Include course information in the response
+    quiz_responses = []
+    for quiz in quizzes:
+        # Get course information
+        course_stmt = select(Course).where(Course.id == quiz.course_id)
+        course_result = await db.execute(course_stmt)
+        course = course_result.scalar_one_or_none()
+        
+        quiz_data = QuizResponse.model_validate(quiz)
+        quiz_data.course = {
+            "id": course.id,
+            "title": course.title,
+            "code": course.code
+        } if course else None
+        quiz_responses.append(quiz_data)
+    
+    return quiz_responses
+
+
+@router.patch("/{quiz_id}", response_model=QuizResponse)
+async def update_quiz(
+    quiz_id: UUID,
+    status: QuizStatus,
+    current_user: dict = Depends(require_role("teacher", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update quiz status (publish/unpublish)."""
+    stmt = select(Quiz).join(Course).where(
+        Quiz.id == quiz_id,
+        Course.tenant_id == current_user["tenant_id"],
+    )
+    result = await db.execute(stmt)
+    quiz = result.scalar_one_or_none()
+    
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    
+    quiz.status = status
+    quiz.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(quiz)
+    
+    # Load course relationship for response
+    course_stmt = select(Course).where(Course.id == quiz.course_id)
+    course_result = await db.execute(course_stmt)
+    course = course_result.scalar_one_or_none()
+    
+    quiz_data = QuizResponse.model_validate(quiz)
+    quiz_data.course = {
+        "id": course.id,
+        "title": course.title,
+        "code": course.code
+    } if course else None
+    
+    return quiz_data
 
 
 @router.post("/generate", response_model=QuizResponse, status_code=201)
@@ -56,8 +111,19 @@ async def generate_quiz(
     # Call AI Worker to generate real questions
     questions_data = []
     try:
-        import httpx
         from config import settings
+        
+        # Determine context
+        context = ""
+        if body.document_id:
+            # Fetch specific document
+            from models import CourseDocument
+            doc_stmt = select(CourseDocument).where(CourseDocument.id == body.document_id)
+            doc_result = await db.execute(doc_stmt)
+            doc = doc_result.scalar_one_or_none()
+            if doc:
+                context = f"Topic: {body.topic}\nSource Document: {doc.filename}\nFocus Specifically on content from this file."
+        
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{settings.AI_WORKER_URL}/generate-quiz",
@@ -66,7 +132,9 @@ async def generate_quiz(
                     "num_questions": body.num_questions,
                     "difficulty": body.difficulty.value,
                     "question_type": body.question_type,
-                    "context": "" # TODO: Pass relevant course context
+                    "course_id": str(body.course_id),
+                    "document_id": str(body.document_id) if body.document_id else None,
+                    "context": context
                 },
                 timeout=60.0
             )
@@ -85,7 +153,7 @@ async def generate_quiz(
         difficulty=body.difficulty.value,
         is_ai_generated=True,
         ai_prompt=body.topic,
-        status=QuizStatus.DRAFT,
+        status=QuizStatus.draft,
     )
     db.add(quiz)
     await db.flush()

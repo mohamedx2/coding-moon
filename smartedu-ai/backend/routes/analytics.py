@@ -33,6 +33,21 @@ async def get_student_analytics(
     )
 
 
+@router.get("/teacher", response_model=TeacherAnalytics)
+async def get_teacher_analytics(
+    current_user: dict = Depends(require_role("teacher", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get analytics for the current teacher."""
+    # TODO: Calculate real analytics from courses and quiz_attempts
+    return TeacherAnalytics(
+        active_students=127,
+        active_courses=4,
+        quizzes_created=38,
+        average_class_score=82.5,
+    )
+
+
 @router.get("/class/{course_id}", response_model=ClassAnalytics)
 async def get_class_analytics(
     course_id: str,

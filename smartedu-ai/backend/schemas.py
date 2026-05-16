@@ -77,6 +77,33 @@ class CourseCreate(BaseModel):
     code: Optional[str] = None
     description: Optional[str] = None
     semester: Optional[str] = None
+    teacher_id: Optional[UUID] = None
+
+
+class ChatMessageResponse(BaseModel):
+    id: UUID
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatHistoryResponse(BaseModel):
+    messages: List[ChatMessageResponse]
+
+
+class CourseDocumentResponse(BaseModel):
+    id: UUID
+    filename: str
+    file_type: str
+    file_size: int
+    is_processed: bool
+    uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class CourseResponse(BaseModel):
@@ -85,7 +112,9 @@ class CourseResponse(BaseModel):
     code: Optional[str]
     description: Optional[str]
     semester: Optional[str]
+    teacher_id: UUID
     is_active: bool
+    documents: List[CourseDocumentResponse] = []
     created_at: datetime
 
     class Config:
@@ -140,6 +169,7 @@ class QuizGenerateRequest(BaseModel):
     num_questions: int = Field(default=10, ge=1, le=50)
     difficulty: DifficultyEnum = DifficultyEnum.medium
     question_type: str = "mcq"
+    document_id: Optional[UUID] = None
 
 
 class QuestionResponse(BaseModel):
@@ -164,6 +194,7 @@ class QuizResponse(BaseModel):
     is_ai_generated: bool
     questions: List[QuestionResponse] = []
     created_at: datetime
+    course: Optional["CourseResponse"] = None
 
     class Config:
         from_attributes = True
@@ -223,32 +254,6 @@ class ChatResponse(BaseModel):
     response: str
     tokens_used: int
     sources: List[str] = []
-
-
-class ChatMessageResponse(BaseModel):
-    id: UUID
-    role: str
-    content: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class ChatHistoryResponse(BaseModel):
-    messages: List[ChatMessageResponse]
-
-
-class CourseDocumentResponse(BaseModel):
-    id: UUID
-    filename: str
-    file_type: str
-    file_size: int
-    is_processed: bool
-    uploaded_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class CourseSuggestion(BaseModel):
